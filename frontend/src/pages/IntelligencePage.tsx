@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import { useEffect, useState } from 'react';
 import {Download,ShieldCheck,Sparkles,AlertTriangle,RefreshCw,Puzzle} from 'lucide-react';
 import {getScoreApi,getRecommendationsApi,exportReportApi,type ScoreData,type Recommendations} from '../api/intelligence';
 
