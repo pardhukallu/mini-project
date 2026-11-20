@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "ShadowWatch Privacy Auditor",
+  "version": "1.0.0",
+  "description": "Audits installed extension permissions locally and optionally syncs a report to ShadowWatch.",
+  "permissions": [
+    "management",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ShadowWatch audit"
+  },
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

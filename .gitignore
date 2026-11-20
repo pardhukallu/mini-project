@@ -1,0 +1,17 @@
+﻿.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+node_modules/
+dist/
+build/
+*.db
+*.sqlite3
+.DS_Store
+.env
+.env.*
+!.env.example
+*.json
+service-account*.json
+credentials.json
