@@ -11,6 +11,7 @@ from app.schemas.breach import (
     EmailBreachResponse,
     ScanHistoryItem,
 )
+from app.services.email_verification import verify_email
 from app.services.xposedornot import check_email_breaches
 import httpx
 
@@ -28,6 +29,17 @@ async def scan_email_breach(
     the audit result in the database.
     """
     clean_email = str(request.email).strip().lower()
+
+    # Breach data cannot confirm a mailbox exists, so probe deliverability
+    # first. Only an explicit "invalid" blocks the scan; timeouts, catch-all
+    # servers and blocked probes never prevent a legitimate breach check.
+    verification = await verify_email(clean_email)
+    if verification.status == "invalid":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This email address does not appear to exist. Please check it and try again.",
+        )
+
     try:
         raw_breaches, source = await check_email_breaches(clean_email)
     except httpx.HTTPStatusError as exc:
@@ -88,6 +100,10 @@ async def scan_email_breach(
             "source": source,
             "data_classes": data_classes_list,
             "breaches": raw_breaches,
+            "email_verification": {
+                "status": verification.status,
+                "reason": verification.reason,
+            },
         }
     )
     db.add(scan_record)
@@ -105,6 +121,8 @@ async def scan_email_breach(
         compromised_data_classes=data_classes_list,
         breaches=formatted_breaches,
         source=source,
+        email_verification=verification.status,
+        email_verification_reason=verification.reason,
     )
 
 

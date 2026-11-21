@@ -21,4 +21,6 @@ export interface EmailBreachResult {
   compromised_data_classes: string[];
   breaches: BreachedAccount[];
   source: 'xposedornot_api';
+  email_verification: 'valid' | 'unknown' | 'not_configured';
+  email_verification_reason?: string | null;
 }

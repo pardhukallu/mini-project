@@ -1,6 +1,17 @@
 import pytest
 from httpx import AsyncClient
 
+from app.services.email_verification import EmailVerificationResult
+
+
+@pytest.fixture(autouse=True)
+def stub_email_verification(monkeypatch):
+    """Keep scan tests deterministic: never probe a live mail server."""
+    async def fake_verify(email):
+        return EmailVerificationResult("valid", "Stubbed for tests.")
+
+    monkeypatch.setattr("app.api.v1.scans.verify_email", fake_verify)
+
 
 async def get_auth_token(client: AsyncClient, email: str = "security@shadowwatch.io") -> str:
     """Helper to create and authenticate a test user, returning the JWT access token."""

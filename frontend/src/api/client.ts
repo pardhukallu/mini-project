@@ -1,4 +1,6 @@
-const API_BASE_URL = `${import.meta.env.VITE_API_URL}/api/v1`;
+// Fall back to the Vite dev proxy when VITE_API_URL is not configured.
+const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, '') ?? '';
+const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 
 export const getStoredAccessToken = (): string | null => {
   return localStorage.getItem('shadowwatch_access_token');
@@ -78,10 +80,44 @@ export async function apiClient<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const errorMessage =
-      data.detail || data.message || `Request failed with status ${response.status}`;
-    throw new Error(errorMessage);
+    throw new Error(extractErrorMessage(data, response.status));
   }
 
   return data as T;
+}
+
+function extractErrorMessage(data: unknown, status: number): string {
+  const fallback = `Request failed with status ${status}`;
+  if (!data || typeof data !== 'object') {
+    return fallback;
+  }
+
+  const body = data as { detail?: unknown; message?: unknown };
+
+  // FastAPI validation errors return detail as an array of { msg, loc } objects.
+  if (Array.isArray(body.detail)) {
+    const messages = body.detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          const msg = (item as { msg?: unknown }).msg;
+          return typeof msg === 'string' ? msg.replace(/^Value error,\s*/i, '') : null;
+        }
+        return null;
+      })
+      .filter((msg): msg is string => Boolean(msg));
+    if (messages.length > 0) {
+      return messages.join(' ');
+    }
+  }
+
+  if (typeof body.detail === 'string' && body.detail) {
+    return body.detail;
+  }
+
+  if (typeof body.message === 'string' && body.message) {
+    return body.message;
+  }
+
+  return fallback;
 }

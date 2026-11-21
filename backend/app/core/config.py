@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # External APIs (Optional in Phase 1 / configurable in .env)
     GEMINI_API_KEY: Optional[str] = None
 
+    # Email-existence verification (breach data cannot confirm a mailbox exists).
+    # Default "smtp" probes the recipient's mail server directly: free, no key.
+    # Optional paid providers: "abstract", "hunter", "zerobounce".
+    EMAIL_VERIFICATION_PROVIDER: str = "smtp"
+    EMAIL_VERIFICATION_API_KEY: Optional[str] = None
+    EMAIL_VERIFICATION_TIMEOUT_SECONDS: float = 10.0
+
     @field_validator("DATABASE_URL", mode="before")
     def assemble_db_url(cls, v: Optional[str]) -> str:
         if not v:

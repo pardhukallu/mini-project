@@ -7,12 +7,13 @@ import {
   Calendar,
   Users,
   ShieldAlert,
-  CheckCircle2,
+  Info,
   Lock,
 } from 'lucide-react';
 import { scanEmailBreachesApi } from '../../api/scans';
 import type { EmailBreachResult } from '../../types/scans';
 import { useAuth } from '../../context/AuthContext';
+import { validateEmail } from '../../utils/email';
 
 export const EmailBreachScanner: React.FC = () => {
   const { user } = useAuth();
@@ -31,9 +32,9 @@ export const EmailBreachScanner: React.FC = () => {
     setError(null);
 
     // Validate before sending anything to the backend/API.
-    const emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
-    if (!emailPattern.test(normalizedEmail)) {
-      setError('Please enter a valid email address.');
+    const validationError = validateEmail(normalizedEmail);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -45,9 +46,9 @@ export const EmailBreachScanner: React.FC = () => {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
       setError(
-        message.includes('temporarily unavailable')
-          ? 'Breach checking is temporarily unavailable. Please try again.'
-          : message || 'Breach checking is temporarily unavailable. Please try again.'
+        message && !message.includes('temporarily unavailable')
+          ? message
+          : 'Breach checking is temporarily unavailable. Please try again.'
       );
     } finally {
       requestInFlight.current = false;
@@ -137,7 +138,20 @@ export const EmailBreachScanner: React.FC = () => {
       {/* Results View */}
       {result && (
         <div className="space-y-6">
-          <div className="p-3 rounded border border-teal-500/20 bg-teal-950/10 text-xs text-teal-200">Live breach-record lookup via XposedOrNot. Breach records do not verify whether an email inbox exists.</div>
+          <div
+            className={`p-3 rounded border text-xs ${
+              result.email_verification === 'valid'
+                ? 'border-emerald-500/20 bg-emerald-950/10 text-emerald-200'
+                : 'border-amber-500/20 bg-amber-950/10 text-amber-200'
+            }`}
+          >
+            Live breach-record lookup via XposedOrNot.{' '}
+            {result.email_verification === 'valid'
+              ? 'The recipient mail server accepted this mailbox address.'
+              : result.email_verification === 'unknown'
+                ? result.email_verification_reason || 'Mailbox existence could not be confirmed.'
+                : 'Mailbox existence was not verified, so this does not confirm the address is valid.'}
+          </div>
           {/* Summary Metric Header */}
           <div className="bg-navy-850 border border-navy-700/80 rounded-lg p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-navy-800 pb-4">
@@ -162,9 +176,9 @@ export const EmailBreachScanner: React.FC = () => {
                         <span>{`${result.breach_count} BREACHES DETECTED`}</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{result.source === 'xposedornot_api' ? 'NO BREACH RECORDS FOUND' : 'NO VERIFIED LIVE RESULT'}</span>
+                      <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded text-xs font-mono font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                        <Info className="w-3.5 h-3.5" />
+                        <span>{result.source === 'xposedornot_api' ? 'NOT FOUND IN BREACH DATA' : 'NO VERIFIED LIVE RESULT'}</span>
                       </span>
                     )}
                   </div>
@@ -235,7 +249,7 @@ export const EmailBreachScanner: React.FC = () => {
 
                       <div className="flex items-center space-x-4 text-xs font-mono text-slate-400">
                         {breach.breach_date && <div className="flex items-center space-x-1.5"><Calendar className="w-3.5 h-3.5 text-slate-500" /><span>Breached: {breach.breach_date}</span></div>}
-                        {(breach.pwn_count ?? 0) > 0 && <div className="flex items-center space-x-1.5"><Users className="w-3.5 h-3.5 text-slate-500" /><span>{breach.pwn_count.toLocaleString()} accounts</span></div>}
+                        {typeof breach.pwn_count === 'number' && breach.pwn_count > 0 && <div className="flex items-center space-x-1.5"><Users className="w-3.5 h-3.5 text-slate-500" /><span>{breach.pwn_count.toLocaleString()} accounts</span></div>}
                       </div>
                     </div>
 
@@ -260,13 +274,17 @@ export const EmailBreachScanner: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="bg-navy-850 border border-navy-700/80 rounded-lg p-10 text-center">
-              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+            <div className="bg-navy-850 border border-amber-500/20 rounded-lg p-10 text-center">
+              <Info className="w-10 h-10 text-amber-300 mx-auto mb-3" />
               <h3 className="text-sm font-mono font-semibold text-slate-200">
-                {result.source === 'xposedornot_api' ? 'No Breach Records Found' : 'No Verified Live Result'}
+                {result.source === 'xposedornot_api' ? 'Not Found in Breach Data' : 'No Verified Live Result'}
               </h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
-                No breach records found for this email address. We could not verify whether the mailbox exists.
+                {result.email_verification === 'valid'
+                  ? 'This address was not found in known breach records. The recipient mail server accepted the mailbox address.'
+                  : result.email_verification === 'unknown'
+                    ? 'This address was not found in known breach records, but mailbox existence could not be confirmed.'
+                    : 'This address was not found in known breach records. Mailbox existence was not verified, so this does not confirm the address is valid.'}
               </p>
             </div>
           )}

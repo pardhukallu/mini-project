@@ -53,7 +53,14 @@ Edit `backend/.env`:
 GEMINI_API_KEY=your_google_gemini_api_key
 ```
 
-Restart the backend after changing environment values. Never commit `.env` or share API keys.
+Breach lookups cannot tell whether a mailbox actually exists. By default the backend verifies deliverability with a free SMTP probe (no API key, no email sent). If your network blocks outbound port 25, you can use a paid provider instead:
+
+```env
+EMAIL_VERIFICATION_PROVIDER=abstract   # abstract, hunter, or zerobounce
+EMAIL_VERIFICATION_API_KEY=your_provider_api_key
+```
+
+When verification cannot complete (blocked port, catch-all server, timeout), the app still performs the breach lookup and marks email existence as unverified rather than guessing. Restart the backend after changing environment values. Never commit `.env` or share API keys.
 
 ## Chrome extension
 
