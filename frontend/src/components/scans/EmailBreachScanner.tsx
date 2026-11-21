@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Mail,
   Search,
@@ -20,21 +20,37 @@ export const EmailBreachScanner: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [result, setResult] = useState<EmailBreachResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestInFlight = useRef(false);
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput.trim()) return;
+    if (requestInFlight.current) return;
 
-    setIsScanning(true);
+    const normalizedEmail = emailInput.trim().toLowerCase();
+    setResult(null);
     setError(null);
 
+    // Validate before sending anything to the backend/API.
+    const emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
+    if (!emailPattern.test(normalizedEmail)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    requestInFlight.current = true;
+    setIsScanning(true);
     try {
-      const data = await scanEmailBreachesApi(emailInput.trim());
+      const data = await scanEmailBreachesApi(normalizedEmail);
       setResult(data);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Scan failed';
-      setError(msg);
+      const message = err instanceof Error ? err.message : '';
+      setError(
+        message.includes('temporarily unavailable')
+          ? 'Breach checking is temporarily unavailable. Please try again.'
+          : message || 'Breach checking is temporarily unavailable. Please try again.'
+      );
     } finally {
+      requestInFlight.current = false;
       setIsScanning(false);
     }
   };
@@ -61,7 +77,7 @@ export const EmailBreachScanner: React.FC = () => {
               <span>Email Data Breach Registry Auditor</span>
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Verify if your email address has appeared in verified public database breaches.
+              Check whether an email address appears in known public data breaches.
             </p>
           </div>
 
@@ -76,11 +92,12 @@ export const EmailBreachScanner: React.FC = () => {
             <div className="relative flex-1">
               <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input
-                type="email"
+                type="text"
+                inputMode="email"
+                autoComplete="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
                 placeholder="target-email@domain.com"
-                required
                 className="w-full bg-navy-900 border border-navy-700 rounded-md pl-10 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-teal-500 font-mono transition"
               />
             </div>
@@ -120,7 +137,7 @@ export const EmailBreachScanner: React.FC = () => {
       {/* Results View */}
       {result && (
         <div className="space-y-6">
-          <div className="p-3 rounded border border-teal-500/20 bg-teal-950/10 text-xs text-teal-200">Live account-specific lookup via XposedOrNot. Free community API limits apply (25 checks/hour and 100/day per IP).</div>
+          <div className="p-3 rounded border border-teal-500/20 bg-teal-950/10 text-xs text-teal-200">Live breach-record lookup via XposedOrNot. Breach records do not verify whether an email inbox exists.</div>
           {/* Summary Metric Header */}
           <div className="bg-navy-850 border border-navy-700/80 rounded-lg p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-navy-800 pb-4">
@@ -147,7 +164,7 @@ export const EmailBreachScanner: React.FC = () => {
                     ) : (
                       <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{result.source === 'xposedornot_api' ? 'ZERO EXPOSURES FOUND' : 'NO VERIFIED LIVE RESULT'}</span>
+                        <span>{result.source === 'xposedornot_api' ? 'NO BREACH RECORDS FOUND' : 'NO VERIFIED LIVE RESULT'}</span>
                       </span>
                     )}
                   </div>
@@ -210,7 +227,7 @@ export const EmailBreachScanner: React.FC = () => {
                         </div>
                         <div>
                           <h4 className="text-sm font-bold font-mono text-slate-100">
-                            {breach.title}
+                            {breach.title || breach.name}
                           </h4>
                           {breach.domain && <span className="text-xs text-slate-500 font-mono">{breach.domain}</span>}
                         </div>
@@ -218,17 +235,17 @@ export const EmailBreachScanner: React.FC = () => {
 
                       <div className="flex items-center space-x-4 text-xs font-mono text-slate-400">
                         {breach.breach_date && <div className="flex items-center space-x-1.5"><Calendar className="w-3.5 h-3.5 text-slate-500" /><span>Breached: {breach.breach_date}</span></div>}
-                        {breach.pwn_count > 0 && <div className="flex items-center space-x-1.5"><Users className="w-3.5 h-3.5 text-slate-500" /><span>{breach.pwn_count.toLocaleString()} accounts</span></div>}
+                        {(breach.pwn_count ?? 0) > 0 && <div className="flex items-center space-x-1.5"><Users className="w-3.5 h-3.5 text-slate-500" /><span>{breach.pwn_count.toLocaleString()} accounts</span></div>}
                       </div>
                     </div>
 
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      {sanitizeDescription(breach.description)}
+                      {breach.description ? sanitizeDescription(breach.description) : 'Breach name reported by XposedOrNot.'}
                     </p>
 
                     <div className="pt-2 border-t border-navy-800/80 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap gap-1">
-                        {breach.data_classes.length ? breach.data_classes.map((item) => (
+                        {(breach.data_classes?.length ?? 0) > 0 ? breach.data_classes.map((item) => (
                           <span key={item} className="text-[10px] font-mono px-2 py-0.5 rounded bg-navy-900 border border-navy-800 text-slate-400">{item}</span>
                         )) : <span className="text-[10px] text-slate-500">Free endpoint provides breach names only; detailed metadata unavailable.</span>}
                       </div>
@@ -249,7 +266,7 @@ export const EmailBreachScanner: React.FC = () => {
                 {result.source === 'xposedornot_api' ? 'No Breach Records Found' : 'No Verified Live Result'}
               </h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
-                {result.source === 'xposedornot_api' ? 'This email address was not found in the XposedOrNot breach database at the time of this check.' : 'No verified account-specific breach result is available. Retry the XposedOrNot lookup later.'}
+                No breach records found for this email address. We could not verify whether the mailbox exists.
               </p>
             </div>
           )}

@@ -1,15 +1,15 @@
 export interface BreachedAccount {
   name: string;
-  title: string;
-  domain: string;
-  breach_date: string;
-  added_date?: string;
-  pwn_count: number;
-  description: string;
-  logo_path?: string;
+  title?: string | null;
+  domain?: string | null;
+  breach_date?: string | null;
+  added_date?: string | null;
+  pwn_count?: number | null;
+  description?: string | null;
+  logo_path?: string | null;
   data_classes: string[];
-  is_verified: boolean;
-  is_sensitive: boolean;
+  is_verified?: boolean | null;
+  is_sensitive?: boolean | null;
 }
 
 export interface EmailBreachResult {
@@ -22,4 +22,3 @@ export interface EmailBreachResult {
   breaches: BreachedAccount[];
   source: 'xposedornot_api';
 }
-

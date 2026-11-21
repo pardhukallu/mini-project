@@ -27,15 +27,23 @@ async def scan_email_breach(
     Scans an email address against XposedOrNot public breach data and records
     the audit result in the database.
     """
-    clean_email = request.email.lower()
+    clean_email = str(request.email).strip().lower()
     try:
         raw_breaches, source = await check_email_breaches(clean_email)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 429:
-            raise HTTPException(status_code=429, detail="XposedOrNot free API rate limit reached. Try again later.") from exc
-        raise HTTPException(status_code=502, detail="XposedOrNot breach lookup is currently unavailable; no clean result can be confirmed.") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="XposedOrNot breach lookup is currently unavailable; no clean result can be confirmed.") from exc
+            raise HTTPException(status_code=429, detail="Breach checking is temporarily unavailable. Please try again.") from exc
+        if exc.response.status_code >= 500:
+            raise HTTPException(status_code=502, detail="Breach checking is temporarily unavailable. Please try again.") from exc
+        raise HTTPException(status_code=503, detail="Breach checking is temporarily unavailable. Please try again.") from exc
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Breach checking is temporarily unavailable. Please try again.") from exc
+    except httpx.NetworkError as exc:
+        raise HTTPException(status_code=503, detail="Breach checking is temporarily unavailable. Please try again.") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Breach checking is temporarily unavailable. Please try again.") from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Breach checking is temporarily unavailable. Please try again.") from exc
 
     breach_count = len(raw_breaches)
     is_breached = breach_count > 0
@@ -51,7 +59,7 @@ async def scan_email_breach(
     if breach_count == 0:
         risk_level = "clean"
         score_impact = 0
-        summary_text = f"Email {clean_email} was not found in any known public breaches."
+        summary_text = "No breach records found. Mailbox existence was not verified."
     elif breach_count == 1:
         risk_level = "low"
         score_impact = 10

@@ -1,52 +1,59 @@
-"""XposedOrNot free community API integration (no API key required).
-
-Email checks return breach names from the public check-email endpoint.
-"""
+"""XposedOrNot public email-breach lookup integration."""
 from typing import Any
 from urllib.parse import quote
+
 import httpx
 
 BASE_URL = "https://api.xposedornot.com"
 
 
-def _breach_record(name: str) -> dict[str, Any]:
-    # The free check-email endpoint returns breach names, not full breach metadata.
-    # Keep unavailable fields explicitly empty rather than inventing details.
-    return {
-        "name": name,
-        "title": name,
-        "domain": "",
-        "breach_date": "",
-        "added_date": None,
-        "pwn_count": 0,
-        "description": "Breach name reported by XposedOrNot. Detailed metadata was not included in the free email-check response.",
-        "logo_path": None,
-        "data_classes": [],
-        "is_verified": True,
-        "is_sensitive": False,
-    }
+def _extract_breach_names(payload: Any) -> list[dict[str, str]]:
+    """Return only breach names explicitly present in the API response."""
+    if not isinstance(payload, dict):
+        raise ValueError("Unexpected XposedOrNot response format")
+
+    if payload.get("Error") == "Not found" and payload.get("email") is None:
+        return []
+
+    groups = payload.get("breaches")
+    if groups is None:
+        raise ValueError("XposedOrNot response did not include breach records")
+
+    if not isinstance(groups, list):
+        raise ValueError("Unexpected XposedOrNot breach response format")
+
+    names: list[str] = []
+    for group in groups:
+        candidates = group if isinstance(group, list) else [group]
+        for item in candidates:
+            if isinstance(item, str) and item.strip():
+                names.append(item.strip())
+
+    # Deduplicate without adding any metadata not returned by XposedOrNot.
+    return [{"name": name} for name in dict.fromkeys(names)]
 
 
-async def check_email_breaches(email: str) -> tuple[list[dict[str, Any]], str]:
+async def check_email_breaches(email: str) -> tuple[list[dict[str, str]], str]:
     clean_email = email.strip().lower()
     url = f"{BASE_URL}/v1/check-email/{quote(clean_email, safe='@.+-_')}"
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(url, headers={"Accept": "application/json", "User-Agent": "ShadowWatch/1.0"})
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
+        response = await client.get(
+            url,
+            headers={"Accept": "application/json", "User-Agent": "ShadowWatch/1.0"},
+        )
+
     if response.status_code == 404:
         return [], "xposedornot_api"
     if response.status_code == 429:
-        raise httpx.HTTPStatusError("XposedOrNot rate limit reached. Try again later.", request=response.request, response=response)
+        raise httpx.HTTPStatusError(
+            "XposedOrNot rate limit reached", request=response.request, response=response
+        )
     response.raise_for_status()
-    payload = response.json()
-    if payload.get("Error") == "Not found":
-        return [], "xposedornot_api"
-    names: list[str] = []
-    for group in payload.get("breaches", []) or []:
-        if isinstance(group, list):
-            names.extend(str(item) for item in group if item)
-        elif isinstance(group, str) and group:
-            names.append(group)
-    # Preserve order while removing duplicates.
-    unique_names = list(dict.fromkeys(names))
-    return [_breach_record(name) for name in unique_names], "xposedornot_api"
 
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError("Invalid JSON returned by XposedOrNot") from exc
+
+    return _extract_breach_names(payload), "xposedornot_api"
